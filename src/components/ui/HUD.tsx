@@ -446,7 +446,99 @@ export const LeftPanel = () => {
     );
 };
 
+
+const WeatherDebug = () => {
+    const weatherStatus = useGameStore(state => state.weatherStatus);
+    
+    const cycleWeather = () => {
+        const types: WeatherType[] = ['CLEAR', 'SCORCHED', 'MONSOON', 'FOG', 'TAILWIND', 'SANDSTORM'];
+        // Handle undefined or null gracefully
+        const current = weatherStatus || 'CLEAR';
+        const currentIdx = types.indexOf(current);
+        const nextIdx = (currentIdx + 1) % types.length;
+        useGameStore.setState({ weatherStatus: types[nextIdx] });
+    };
+
+    return (
+        <Panel style={{ marginBottom: '0px', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(50,50,70,0.8)' }}>
+            <div style={{ fontSize: '11px', color: '#aaa', fontWeight: 'bold' }}>ATMOSPHERE</div>
+            <button 
+                onClick={cycleWeather}
+                style={{
+                    background: weatherStatus === 'CLEAR' ? 'rgba(255,255,255,0.1)' : '#2196F3',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    color: 'white',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    width: '100px',
+                    textAlign: 'center',
+                    transition: 'all 0.2s'
+                }}
+            >
+                {weatherStatus || 'CLEAR'}
+            </button>
+        </Panel>
+    );
+};
+
+const BankRewardModal = () => {
+    const bankRewardPending = useGameStore((state) => state.bankRewardPending);
+    const resolveBankReward = useGameStore((state) => state.resolveBankReward);
+    const currentPlayer = useGameStore((state) => state.currentPlayer);
+
+    if (!bankRewardPending || bankRewardPending.playerId !== currentPlayer) return null;
+
+    return (
+        <div style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200
+        }}>
+             <Panel style={{ width: '400px', textAlign: 'center', border: '2px solid #FFD700', boxShadow: '0 0 30px rgba(255, 215, 0, 0.3)' }}>
+                <h1 style={{ color: '#FFD700', fontSize: '24px', marginBottom: '10px' }}>VAULT BREACHED</h1>
+                <p style={{ color: '#ccc', marginBottom: '30px' }}>The heist was successful. Choose your share of the loot.</p>
+                
+                <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
+                    <button 
+                        onClick={() => resolveBankReward('GOLD')}
+                        style={{
+                            padding: '20px', background: 'rgba(255, 215, 0, 0.1)',
+                            border: '1px solid #FFD700', borderRadius: '8px',
+                            color: '#FFD700', cursor: 'pointer', flex: 1,
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <div style={{ fontSize: '24px', marginBottom: '5px' }}>💰</div>
+                        <div style={{ fontWeight: 'bold' }}>{GOLD_SETTINGS.HEIST_REWARD_GOLD} GOLD</div>
+                        <div style={{ fontSize: '11px', color: '#888' }}>Fund your war machine</div>
+                    </button>
+
+                    <button 
+                        onClick={() => resolveBankReward('CP')}
+                        style={{
+                            padding: '20px', background: 'rgba(33, 150, 243, 0.1)',
+                            border: '1px solid #2196F3', borderRadius: '8px',
+                            color: '#2196F3', cursor: 'pointer', flex: 1,
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                         <div style={{ fontSize: '24px', marginBottom: '5px' }}>⚡</div>
+                        <div style={{ fontWeight: 'bold' }}>{GOLD_SETTINGS.HEIST_REWARD_CP} CP</div>
+                        <div style={{ fontSize: '11px', color: '#888' }}>Tactical Advantage</div>
+                    </button>
+                </div>
+             </Panel>
+        </div>
+    );
+};
+
 export const RightPanel = () => {
+    // Force re-render on weather change for the debug panel
+    const weatherStatus = useGameStore(state => state.weatherStatus); 
+
     const selectedUnitId = useGameStore(state => state.selectedUnitId);
     const selectedTileId = useGameStore(state => state.selectedTileId);
     const mapData = useGameStore(state => state.mapData);
@@ -458,6 +550,9 @@ export const RightPanel = () => {
     const buyShopItem = useGameStore(state => state.buyShopItem);
     const cancelPlacement = useGameStore(state => state.cancelPlacement);
     const placementMode = useGameStore(state => state.placementMode);
+    
+    // Heist Bank Reward Check
+    const bankRewardPending = useGameStore(state => state.bankRewardPending);
     
     const secureBuilding = useGameStore(state => state.secureBuilding);
     const heistBank = useGameStore(state => state.heistBank);
@@ -477,6 +572,11 @@ export const RightPanel = () => {
     const selectedTile = mapData.find(t => t.id === selectedTileId);
 
     const isMyTurn = !isAiTurn;
+
+    // 1. BANK HEIST MODAL (Highest Priority Overlay)
+    if (bankRewardPending && bankRewardPending.playerId === currentPlayer) {
+         return <BankRewardModal />;
+    }
 
     if (placementMode && placementMode.active) {
         return (
@@ -501,6 +601,8 @@ export const RightPanel = () => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '20px', gap: '15px' }}>
             
+            <WeatherDebug />
+
             {/* TOP SECTION: TABS & INTEL/LOGS (Flex 1 to fill available space) */}
             <Panel style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
                 {/* Tabs Header */}

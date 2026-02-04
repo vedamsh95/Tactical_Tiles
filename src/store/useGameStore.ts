@@ -37,6 +37,9 @@ interface GameStore {
 
   // Weather (Per Player Zone)
   weather: WeatherState;
+  
+  // Phase 4: Active Global Weather (visuals)
+  weatherStatus: WeatherType;
 
   // Visibility (Fog of War)
   visibleTiles: Set<string>; 
@@ -475,6 +478,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   placementMode: null,
   
   weather: { playerZones: {}, turnsRemaining: 5 },
+  weatherStatus: 'MONSOON', // Force MONSOON for testing
   visibleTiles: new Set(),
 
   selectedUnitId: null,

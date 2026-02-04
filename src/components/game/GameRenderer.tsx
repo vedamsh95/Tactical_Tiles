@@ -14,7 +14,7 @@ import { useViewportContext } from '../../context/ViewportContext';
 import { SelectionCursor } from './renderer/SelectionCursor';
 import { DamageText } from './renderer/DamageText';
 import { ProjectileRenderer } from './renderer/ProjectileRenderer';
-import { WeatherSystem } from './renderer/WeatherSystem';
+import { WeatherSystem } from './renderer/WeatherSystem.tsx'; // Explicit .tsx extension
 import { useEffectStore } from '../../store/useEffectStore';
 import { AdvancedBloomFilter } from 'pixi-filters';
 import { useMemo } from 'react';
@@ -426,14 +426,22 @@ export const GameRenderer = () => {
                                             })} 
                                         />
                                     )}
-                                    {/* Building Ownership Ring */}
+                                    {/* Building Ownership Ring (Visible Border) */}
                                     {tile.type === 'BUILDING' && tile.owner !== undefined && (
                                         <Graphics 
                                             draw={g => {
                                                 const colorStr = PLAYER_COLORS[tile.owner!] || '#FFFFFF';
                                                 const color = parseInt(colorStr.replace('#', '0x'));
-                                                g.lineStyle(3, color, 1);
-                                                g.drawRect(4, 4, TILE_SIZE-8, TILE_SIZE-8);
+                                                
+                                                // Outer Glow/Border
+                                                g.lineStyle(4, color, 1); // Thicker line
+                                                g.drawRect(0, 0, TILE_SIZE, TILE_SIZE); // Full Tile Border
+                                                
+                                                // Inner Fill (Subtle)
+                                                g.lineStyle(0);
+                                                g.beginFill(color, 0.2);
+                                                g.drawRect(2, 2, TILE_SIZE-4, TILE_SIZE-4);
+                                                g.endFill();
                                             }}
                                         />
                                     )}
@@ -459,9 +467,6 @@ export const GameRenderer = () => {
                         })}
                     </Container>
 
-                    {/* Phase 4: Weather System (Atmosphere) */}
-                    <WeatherSystem width={gridSize * TILE_SIZE} height={gridSize * TILE_SIZE} />
-
                     {/* 6. EFFECTS LAYER (Damage, Selection, Particles) */}
                     <Container name="effects" eventMode="none">
                          {/* Selection Pulse */}
@@ -480,8 +485,13 @@ export const GameRenderer = () => {
                          ))}
                     </Container>
 
+                    {/* Phase 4: Weather System (Atmosphere) - MOVED TO TOP LAYER */}
+                    <WeatherSystem width={gridSize * TILE_SIZE} height={gridSize * TILE_SIZE} />
+
                 </GameViewport>
             </Stage>
         </div>
     );
 };
+
+// End of GameRenderer
