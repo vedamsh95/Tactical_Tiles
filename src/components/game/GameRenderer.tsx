@@ -173,7 +173,7 @@ const ZoneAndFogLayer = ({ mapData, visibleTiles, weather, settings, gridSize }:
 
 export const GameRenderer = () => {
     const parentRef = useRef<HTMLDivElement>(null);
-    const { setViewport } = useViewportContext();
+    const { setViewport, viewport } = useViewportContext();
     const [loaded, setLoaded] = useState(false);
     const [dimensions, setDimensions] = useState({ width: 800, height: 800 });
 
@@ -486,7 +486,7 @@ export const GameRenderer = () => {
                     </Container>
 
                     {/* Phase 4: Weather System (Atmosphere) - MOVED TO TOP LAYER */}
-                    <WeatherSystem width={gridSize * TILE_SIZE} height={gridSize * TILE_SIZE} />
+                    <WeatherSystem width={gridSize * TILE_SIZE} height={gridSize * TILE_SIZE} viewportInstance={viewport} />
 
                 </GameViewport>
             </Stage>

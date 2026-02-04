@@ -1,363 +1,549 @@
 import React, { useEffect, useRef } from 'react';
-import { Container, useApp, TilingSprite } from '@pixi/react';
+import { Container, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
-import { AdjustmentFilter, GodrayFilter } from 'pixi-filters';
-import { Emitter, EmitterConfigV3 } from '@pixi/particle-emitter';
 import { useGameStore } from '../../../store/useGameStore';
-import { useViewportContext } from '../../../context/ViewportContext';
-import { TextureManager } from '../../../core/graphics/TextureManager';
+import { TILE_SIZE } from '../../../core/constants/Config';
+import { Tile, WeatherType, WeatherState } from '../../../core/types';
 
-// Configuration for Emitters based on Weather Type
-const getEmitterConfig = (type: string, width: number, height: number): EmitterConfigV3 | null => {
-    // Shared basics
-    const base = {
-        lifetime: { min: 2, max: 4 },
-        frequency: 0.005,
-        emitterLifetime: -1,
-        maxParticles: 1000,
-        addAtBack: false,
-        pos: { x: 0, y: 0 },
-    };
+// --- ZONE-AWARE WEATHER ENGINE ---
 
-    switch (type) {
-        case 'MONSOON':
-            return {
-                ...base,
-                lifetime: { min: 0.6, max: 1.0 },
-                frequency: 0.002, 
-                spawnChance: 1,
-                particlesPerWave: 2,
-                behaviors: [
-                    {
-                        type: 'alpha',
-                        config: { 
-                            alpha: { 
-                                list: [
-                                    { value: 1.0, time: 0 }, 
-                                    { value: 0.0, time: 1 }
-                                ],
-                                isStepped: false
-                            } 
-                        }
-                    },
-                    {
-                        type: 'scale',
-                        config: { 
-                            scale: { 
-                                list: [
-                                    { value: 1.0, time: 0 }, 
-                                    { value: 0.5, time: 1 }
-                                ],
-                                isStepped: false
-                            } 
-                        }
-                    },
-                    {
-                        type: 'color', 
-                        config: { 
-                            color: { 
-                                list: [
-                                    { value: "#00ffff", time: 0 }, 
-                                    { value: "#aaddff", time: 1 }
-                                ],
-                                isStepped: false
-                            } 
-                        }
-                    },
-                    {
-                        type: 'moveSpeed',
-                        config: { 
-                            speed: { 
-                                list: [
-                                    { value: 900, time: 0 }, 
-                                    { value: 900, time: 1 }
-                                ],
-                                isStepped: false
-                            } 
-                        }
-                    },
-                    {
-                        type: 'rotation',
-                        config: { 
-                             accel: 0,
-                             minSpeed: 0,
-                             maxSpeed: 0,
-                             minStart: 85,
-                             maxStart: 95
-                        }
-                    },
-                    {
-                        type: 'spawnShape', 
-                        config: {
-                            type: 'rect',
-                            data: { x: -1000, y: -1000, w: 4000, h: 2000 }
-                        }
-                    },
-                    {
-                        type: 'textureSingle',
-                        config: { texture: TextureManager.get('PARTICLE_RAIN') || PIXI.Texture.WHITE }
-                    }
-                ]
-            } as any;
-        
-        case 'SANDSTORM':
-            return {
-                ...base,
-                frequency: 0.004,
-                behaviors: [
-                     {
-                        type: 'alpha',
-                        config: { alpha: { list: [{ value: 0, time: 0 }, { value: 0.8, time: 0.2 }, { value: 0, time: 1 }] } }
-                    },
-                    {
-                        type: 'scale',
-                        config: { scale: { list: [{ value: 0.5, time: 0 }, { value: 0.2, time: 1 }] } }
-                    },
-                    {
-                        type: 'color',
-                        config: { color: { list: [{ value: "ccaa88", time: 0 }, { value: "aa8866", time: 1 }] } }
-                    },
-                    {
-                        type: 'moveSpeed',
-                        config: { speed: { list: [{ value: 800, time: 0 }, { value: 600, time: 1 }] } }
-                    },
-                    {
-                        type: 'rotationStatic',
-                        config: { min: 0, max: 0 } // Horizontal
-                    },
-                    {
-                        type: 'spawnShape',
-                        config: {
-                             type: 'rect',
-                             data: { x: -1000, y: -1000, w: 2000, h: 4000 }
-                        }
-                    },
-                    {
-                        type: 'textureSingle',
-                        config: { texture: TextureManager.get('PARTICLE_DUST') || PIXI.Texture.WHITE }
-                    }
-                ]
-            } as any;
+enum ParticleType {
+    RAIN = 'RAIN',
+    DUST = 'DUST',
+    WIND_STREAK = 'WIND_STREAK',
+    FOG = 'FOG',
+    HEAT = 'HEAT',
+}
 
-        default:
-            return null;
+interface Particle {
+    type: ParticleType;
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    life: number;
+    maxLife: number;
+    size: number;
+    color: number;
+    alpha: number;
+    scale?: number;
+    vs?: number;
+    thickness?: number;
+    zone?: number;
+}
+
+interface ZoneBounds {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    tiles: Array<{ x: number; y: number }>;
+    tileSet: Set<string>; // For fast lookup: "x,y" -> true
+}
+
+class ZoneWeatherEngine {
+    private particles: Particle[] = [];
+    private graphics: PIXI.Graphics;
+    private container: PIXI.Container;
+    private viewportRef: any = null;
+    private zoneBounds: Map<number, ZoneBounds> = new Map();
+    private zoneWeather: Record<number, WeatherType> = {};
+
+    constructor(container: PIXI.Container) {
+        this.container = container;
+        this.graphics = new PIXI.Graphics();
+        this.container.addChild(this.graphics);
     }
-};
+
+    public setViewport(viewport: any) {
+        this.viewportRef = viewport;
+    }
+    
+    // Check if a pixel position is inside a zone's actual tiles
+    private isInsideZone(px: number, py: number, zoneId: number): boolean {
+        const bounds = this.zoneBounds.get(zoneId);
+        if (!bounds) return false;
+        
+        // Convert pixel to tile coordinates
+        const tileX = Math.floor(px / TILE_SIZE) * TILE_SIZE;
+        const tileY = Math.floor(py / TILE_SIZE) * TILE_SIZE;
+        
+        return bounds.tileSet.has(`${tileX},${tileY}`);
+    }
+    
+    // Get a random position inside the actual zone tiles
+    private getRandomZonePosition(zoneId: number): { x: number; y: number } | null {
+        const bounds = this.zoneBounds.get(zoneId);
+        if (!bounds || bounds.tiles.length === 0) return null;
+        
+        // Pick a random tile from the zone
+        const tile = bounds.tiles[Math.floor(Math.random() * bounds.tiles.length)];
+        
+        // Return random position within that tile
+        return {
+            x: tile.x + Math.random() * TILE_SIZE,
+            y: tile.y + Math.random() * TILE_SIZE
+        };
+    }
+
+    public setZoneData(tiles: Tile[], weather: WeatherState) {
+        // Build zone bounds from tiles
+        this.zoneBounds.clear();
+        
+        for (const tile of tiles) {
+            if (tile.zone === undefined || tile.zone < 0) continue;
+            
+            const zone = tile.zone;
+            if (!this.zoneBounds.has(zone)) {
+                this.zoneBounds.set(zone, {
+                    minX: Infinity, maxX: -Infinity,
+                    minY: Infinity, maxY: -Infinity,
+                    tiles: [],
+                    tileSet: new Set()
+                });
+            }
+            
+            const bounds = this.zoneBounds.get(zone)!;
+            const px = tile.x * TILE_SIZE;
+            const py = tile.y * TILE_SIZE;
+            
+            bounds.minX = Math.min(bounds.minX, px);
+            bounds.maxX = Math.max(bounds.maxX, px + TILE_SIZE);
+            bounds.minY = Math.min(bounds.minY, py);
+            bounds.maxY = Math.max(bounds.maxY, py + TILE_SIZE);
+            bounds.tiles.push({ x: px, y: py });
+            bounds.tileSet.add(`${px},${py}`);
+        }
+        
+        // Store weather per zone
+        this.zoneWeather = weather.playerZones || {};
+    }
+
+    public update(delta: number) {
+        this.graphics.clear();
+        
+        if (!this.viewportRef) return;
+        
+        const dt = delta || 1;
+        
+        const vp = this.viewportRef;
+        const centerX = vp.center.x;
+        const centerY = vp.center.y;
+        const viewW = vp.screenWidth / vp.scale.x;
+        const viewH = vp.screenHeight / vp.scale.y;
+        
+        // Visible area bounds
+        const visLeft = centerX - viewW;
+        const visRight = centerX + viewW;
+        const visTop = centerY - viewH;
+        const visBottom = centerY + viewH;
+        
+        // Spawn particles for each zone based on its weather
+        this.zoneBounds.forEach((bounds, zoneId) => {
+            const weather = this.zoneWeather[zoneId] || 'CLEAR';
+            
+            // Only spawn if zone is at least partially visible
+            if (bounds.maxX < visLeft || bounds.minX > visRight ||
+                bounds.maxY < visTop || bounds.minY > visBottom) {
+                return;
+            }
+            
+            this.spawnZoneParticles(dt, zoneId, bounds, weather);
+        });
+        
+        // Update and draw particles
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            
+            // Move
+            p.x = p.x + p.vx * dt;
+            p.y = p.y + p.vy * dt;
+            
+            // Scale animation
+            if (p.vs) {
+                p.scale = (p.scale || 1) + p.vs * dt;
+            }
+            
+            // Age
+            p.life -= 0.015 * dt;
+            
+            // Remove dead or invalid
+            if (p.life <= 0 || isNaN(p.x) || isNaN(p.y)) {
+                this.particles.splice(i, 1);
+                continue;
+            }
+            
+            // STRICT ZONE CHECK - particle must be on an actual zone tile
+            if (p.zone !== undefined) {
+                if (!this.isInsideZone(p.x, p.y, p.zone)) {
+                    // Particle left its zone - remove it immediately
+                    this.particles.splice(i, 1);
+                    continue;
+                }
+            }
+            
+            // Cull far out of view
+            const padding = 100;
+            if (p.x < visLeft - padding || p.x > visRight + padding ||
+                p.y < visTop - padding || p.y > visBottom + padding) {
+                this.particles.splice(i, 1);
+                continue;
+            }
+            
+            // Calculate fade
+            const lifeRatio = p.life / p.maxLife;
+            let fade = 1;
+            if (lifeRatio < 0.15) fade = lifeRatio / 0.15;
+            else if (lifeRatio > 0.85) fade = (1 - lifeRatio) / 0.15;
+            const alpha = p.alpha * fade;
+            
+            this.drawParticle(p, alpha);
+        }
+    }
+
+    private spawnZoneParticles(dt: number, zoneId: number, bounds: ZoneBounds, weather: WeatherType) {
+        // Scale spawn rate by zone size (number of tiles)
+        const areaFactor = Math.min(1, bounds.tiles.length / 50);
+        
+        // Helper to get random position INSIDE actual zone tiles
+        const getPos = () => this.getRandomZonePosition(zoneId);
+        
+        switch (weather) {
+            case 'MONSOON':
+                // Heavy rain - spawns at random positions INSIDE zone tiles
+                if (Math.random() < 1.0 * areaFactor) {
+                    for (let i = 0; i < 8; i++) {
+                        const pos = getPos();
+                        if (!pos) continue;
+                        this.particles.push({
+                            type: ParticleType.RAIN,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 0.5,
+                            vy: 5 + Math.random() * 2,
+                            life: 0.3,
+                            maxLife: 0.3,
+                            size: 10 + Math.random() * 6,
+                            color: 0x7dd3fc,
+                            alpha: 0.5 + Math.random() * 0.3,
+                            zone: zoneId
+                        });
+                    }
+                }
+                // Mist/splash inside zone
+                if (Math.random() < 0.06 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.FOG,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 0.1,
+                            vy: 0.05,
+                            life: 1.5,
+                            maxLife: 1.5,
+                            size: 25 + Math.random() * 20,
+                            color: 0x94a3b8,
+                            alpha: 0.12,
+                            scale: 1,
+                            vs: 0.001,
+                            zone: zoneId
+                        });
+                    }
+                }
+                break;
+                
+            case 'SANDSTORM':
+                // Dust clouds - spawn INSIDE zone tiles
+                if (Math.random() < 0.125 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.DUST,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 1.5 + Math.random() * 1.5,
+                            vy: (Math.random() - 0.5) * 0.5,
+                            life: 0.8,
+                            maxLife: 0.8,
+                            size: 35 + Math.random() * 40,
+                            color: 0xd4a574,
+                            alpha: 0.12 + Math.random() * 0.08,
+                            scale: 0.9,
+                            vs: 0.003,
+                            zone: zoneId
+                        });
+                    }
+                }
+                // Small fast particles - spawn INSIDE zone tiles
+                if (Math.random() < 0.375 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.DUST,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 2 + Math.random() * 2,
+                            vy: (Math.random() - 0.5) * 0.6,
+                            life: 0.5,
+                            maxLife: 0.5,
+                            size: 3 + Math.random() * 4,
+                            color: 0xc4a35a,
+                            alpha: 0.45 + Math.random() * 0.2,
+                            scale: 1,
+                            vs: 0,
+                            zone: zoneId
+                        });
+                    }
+                }
+                // Wind streaks - spawn INSIDE zone tiles
+                if (Math.random() < 0.11 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.WIND_STREAK,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 5 + Math.random() * 4,
+                            vy: 0,
+                            life: 0.3,
+                            maxLife: 0.3,
+                            size: 25 + Math.random() * 30,
+                            thickness: 1 + Math.random() * 1,
+                            color: 0xe8d5b7,
+                            alpha: 0.25,
+                            zone: zoneId
+                        });
+                    }
+                }
+                break;
+                
+            case 'TAILWIND':
+                // Wind streaks - spawn INSIDE zone tiles
+                if (Math.random() < 0.28 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.WIND_STREAK,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 6 + Math.random() * 5,
+                            vy: (Math.random() - 0.5) * 0.2,
+                            life: 0.4,
+                            maxLife: 0.4,
+                            size: 35 + Math.random() * 45,
+                            thickness: 0.8 + Math.random() * 1.2,
+                            color: 0xf1f5f9,
+                            alpha: 0.4 + Math.random() * 0.2,
+                            zone: zoneId
+                        });
+                    }
+                }
+                // Small particles - spawn INSIDE zone tiles
+                if (Math.random() < 0.375 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.DUST,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 3 + Math.random() * 3,
+                            vy: (Math.random() - 0.5) * 0.3,
+                            life: 0.4,
+                            maxLife: 0.4,
+                            size: 2 + Math.random() * 2.5,
+                            color: 0xe2e8f0,
+                            alpha: 0.4,
+                            scale: 1,
+                            vs: 0,
+                            zone: zoneId
+                        });
+                    }
+                }
+                break;
+                
+            case 'FOG':
+                // Dense fog blobs - spawn INSIDE zone tiles
+                if (Math.random() < 0.075 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.FOG,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 0.1 + Math.random() * 0.1,
+                            vy: (Math.random() - 0.5) * 0.1,
+                            life: 2,
+                            maxLife: 2,
+                            size: 40 + Math.random() * 40,
+                            color: 0xb0b8c4,
+                            alpha: 0.2 + Math.random() * 0.1,
+                            scale: 0.9,
+                            vs: 0.002,
+                            zone: zoneId
+                        });
+                    }
+                }
+                break;
+                
+            case 'SCORCHED':
+                // Heat shimmer particles - spawn INSIDE zone tiles
+                if (Math.random() < 0.15 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.HEAT,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: (Math.random() - 0.5) * 0.2,
+                            vy: -0.5 - Math.random() * 0.3,
+                            life: 1,
+                            maxLife: 1,
+                            size: 12 + Math.random() * 15,
+                            color: 0xff8844,
+                            alpha: 0.12 + Math.random() * 0.08,
+                            scale: 1,
+                            vs: 0.004,
+                            zone: zoneId
+                        });
+                    }
+                }
+                break;
+                
+            case 'CLEAR':
+                // Very subtle ambient particles - spawn INSIDE zone tiles
+                if (Math.random() < 0.019 * areaFactor) {
+                    const pos = getPos();
+                    if (pos) {
+                        this.particles.push({
+                            type: ParticleType.DUST,
+                            x: pos.x,
+                            y: pos.y,
+                            vx: 0.05,
+                            vy: -0.03,
+                            life: 2,
+                            maxLife: 2,
+                            size: 1.5 + Math.random() * 1.5,
+                            color: 0xffffff,
+                            alpha: 0.12,
+                            scale: 1,
+                            vs: 0,
+                            zone: zoneId
+                        });
+                    }
+                }
+                break;
+        }
+    }
+
+    private drawParticle(p: Particle, alpha: number) {
+        if (alpha < 0.01) return;
+        
+        switch (p.type) {
+            case ParticleType.RAIN:
+                this.graphics.beginFill(p.color, alpha);
+                this.graphics.drawRect(p.x, p.y, 2, p.size);
+                this.graphics.endFill();
+                break;
+                
+            case ParticleType.DUST:
+            case ParticleType.HEAT:
+                const sz = p.size * (p.scale || 1);
+                this.graphics.beginFill(p.color, alpha * 0.4);
+                this.graphics.drawCircle(p.x, p.y, sz * 1.4);
+                this.graphics.endFill();
+                this.graphics.beginFill(p.color, alpha);
+                this.graphics.drawCircle(p.x, p.y, sz);
+                this.graphics.endFill();
+                break;
+                
+            case ParticleType.WIND_STREAK:
+                const t = p.thickness || 1;
+                this.graphics.beginFill(p.color, alpha);
+                this.graphics.drawRoundedRect(p.x, p.y, p.size, t, t / 2);
+                this.graphics.endFill();
+                break;
+                
+            case ParticleType.FOG:
+                const fogSz = p.size * (p.scale || 1);
+                this.graphics.beginFill(p.color, alpha * 0.3);
+                this.graphics.drawCircle(p.x, p.y, fogSz * 1.5);
+                this.graphics.endFill();
+                this.graphics.beginFill(p.color, alpha * 0.5);
+                this.graphics.drawCircle(p.x, p.y, fogSz);
+                this.graphics.endFill();
+                break;
+        }
+    }
+
+    public destroy() {
+        this.graphics.destroy();
+    }
+}
+
+// --- REACT COMPONENT ---
 
 interface WeatherSystemProps {
     width: number;
     height: number;
+    viewportInstance?: any;
 }
 
-export const WeatherSystem: React.FC<WeatherSystemProps> = ({ width, height }) => {
-    // Animation Loop - DIRECT TICKER ATTACHMENT (Robust)
+export const WeatherSystem: React.FC<WeatherSystemProps> = ({ width, height, viewportInstance }) => {
     const app = useApp();
-    const { viewport } = useViewportContext();
-    const weatherStatus = useGameStore(state => state.weatherStatus);
-
-    // DEBUG: Log mount and changes
-    useEffect(() => {
-        console.log(`[WeatherSystem] MOUNTED. Status: ${weatherStatus}, Size: ${width}x${height}`);
-    }, [weatherStatus, width, height]);
+    const viewport = viewportInstance;
     
-    // Refs
+    // Get zone data from game store
+    const mapData = useGameStore(state => state.mapData);
+    const weather = useGameStore(state => state.weather);
+    
     const containerRef = useRef<PIXI.Container>(null);
-    const emitterRef = useRef<Emitter | null>(null);
-    
-    // Shader Refs (to animate)
-    const displacementSpriteRef = useRef<PIXI.Sprite | null>(null);
-    const fogSpriteRef = useRef<PIXI.TilingSprite | null>(null);
+    const engineRef = useRef<ZoneWeatherEngine | null>(null);
 
-    // Setup Filters on VIEWPORT
+    // Initialize Engine ONCE
     useEffect(() => {
-        if (!viewport) return;
-
-        // Cleanup previous filters on Viewport
-        viewport.filters = [];
-        if (displacementSpriteRef.current) {
-             displacementSpriteRef.current.destroy();
-             displacementSpriteRef.current = null;
-        }
-
-        const activeFilters: PIXI.Filter[] = [];
-
-        // 1. SCORCHED: Displacement + Orange Tint
-        if (weatherStatus === 'SCORCHED') {
-             const noiseTex = TextureManager.get('NOISE_MAP');
-             if (noiseTex.baseTexture) noiseTex.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
-             
-             const sprite = new PIXI.Sprite(noiseTex);
-             sprite.width = width; 
-             sprite.height = height; 
-             
-             // IMPORTANT: Sprite must be in the display tree
-             if (containerRef.current) containerRef.current.addChild(sprite); 
-             
-             displacementSpriteRef.current = sprite;
-
-             const dispFilter = new PIXI.filters.DisplacementFilter(sprite);
-             dispFilter.scale.x = 20;
-             dispFilter.scale.y = 20;
-             activeFilters.push(dispFilter);
-
-             const orangeAdj = new AdjustmentFilter({ red: 1.4, green: 1.1, blue: 0.8, gamma: 1.1 });
-             activeFilters.push(orangeAdj as any);
-        }
-
-        // 2. MONSOON: Dark Adjustment + Moody Godrays
-        if (weatherStatus === 'MONSOON') {
-             const darkAdj = new AdjustmentFilter({ red: 0.7, green: 0.8, blue: 1.1, brightness: 0.7 });
-             activeFilters.push(darkAdj as any);
-
-             const rays = new GodrayFilter({
-                 gain: 0.3,
-                 lacunarity: 2.5,
-                 alpha: 0.3,
-                 angle: 30, // Slanted with rain
-             });
-             activeFilters.push(rays as any);
-        }
-
-        // 3. FOG: Blur Filter
-        if (weatherStatus === 'FOG') {
-             const blur = new PIXI.filters.BlurFilter(4); 
-             activeFilters.push(blur);
-             
-             const milkAdj = new AdjustmentFilter({ brightness: 1.2, contrast: 0.6, gamma: 1.5 });
-             activeFilters.push(milkAdj as any);
-        }
-
-        viewport.filters = activeFilters;
-
-        return () => {
-             if (viewport) viewport.filters = [];
-             if (containerRef.current && displacementSpriteRef.current) {
-                 containerRef.current.removeChild(displacementSpriteRef.current);
-             }
-        };
-    }, [weatherStatus, viewport, width, height]);
-
-
-    // Setup Particles
-    useEffect(() => {
-        if (!containerRef.current) {
-            console.error("[WeatherSystem] Container Ref is NULL");
-            return;
-        }
+        if (!containerRef.current || engineRef.current) return;
         
-        // Cleanup old
-        if (emitterRef.current) {
-            emitterRef.current.destroy();
-            emitterRef.current = null;
-        }
-
-        console.log(`[WeatherSystem] Configuring particles for: ${weatherStatus}`);
-
-        let config: EmitterConfigV3 | null = null;
-        if (weatherStatus === 'MONSOON') {
-            config = getEmitterConfig('MONSOON', width, height);
-        } else if (weatherStatus === 'SANDSTORM') {
-            config = getEmitterConfig('SANDSTORM', width, height);
-        }
-
-        if (config && containerRef.current) {
-             console.log(`[WeatherSystem] Starting Emitter: ${weatherStatus} with config:`, config);
-             /* 
-             // EMERGENCY DISABLE: Particle Emitter is crashing the app (TypeError: Cannot read properties of null (reading 'time'))
-             // Restoring map visibility by disabling particles for now.
-             emitterRef.current = new Emitter(
-                 containerRef.current,
-                 config as any
-             );
-             emitterRef.current.emit = true;
-             */
-             console.warn("[WeatherSystem] PARTICLES DISABLED FOR SAFETY. Check Emitter Config.");
-        } else {
-            console.log(`[WeatherSystem] No emitter config for status: ${weatherStatus}`);
-        }
-
+        const engine = new ZoneWeatherEngine(containerRef.current);
+        engineRef.current = engine;
+        
         return () => {
-            emitterRef.current?.destroy();
-            emitterRef.current = null;
+            engine.destroy();
+            engineRef.current = null;
         };
+    }, []);
 
-    }, [weatherStatus, width, height]);
-
-    // THE LOOP (Robust Direct Ticker)
+    // Set viewport when available
     useEffect(() => {
-        if (!app) return;
+        if (engineRef.current && viewport) {
+            engineRef.current.setViewport(viewport);
+        }
+    }, [viewport]);
 
-        const update = (delta: number) => {
-            // Emitter needs seconds. Pixi delta is frames.
-            const dt = (delta || 1) * 0.01; 
+    // Update zone data when map or weather changes
+    useEffect(() => {
+        if (engineRef.current && mapData && weather) {
+            engineRef.current.setZoneData(mapData, weather);
+        }
+    }, [mapData, weather]);
 
-            // 1. Update Particles
-            if (emitterRef.current) {
-                emitterRef.current.update(dt);
-                
-                // DEBUG: Check if particles exist
-                // console.log("Active Particles:", emitterRef.current.particleCount);
-                if (Math.random() < 0.05) console.log(`[WeatherSystem] Active: ${emitterRef.current.particleCount} | Pos: ${emitterRef.current.spawnPos?.x.toFixed(0)},${emitterRef.current.spawnPos?.y.toFixed(0)}`);
-
-                // Camera Follow - Reposition Spawner
-                if (viewport) {
-                   // Center the emitter on the viewport
-                   // Note: 'containerRef' is a child of some container in GameRenderer.
-                   // If that container moves with the map, we need to counter-move or just rely on HUGE spawn rect.
-                   
-                   // With spawnShape: rect w=4000, we simply need to keep the center reasonable.
-                   if (!emitterRef.current.spawnPos) emitterRef.current.spawnPos = { x: 0, y: 0 };
-                   emitterRef.current.spawnPos.x = viewport.center.x; 
-                   emitterRef.current.spawnPos.y = viewport.center.y;
-                }
-            }
-
-            // 2. Animate Filters
-            if (weatherStatus === 'SCORCHED' && displacementSpriteRef.current) {
-                displacementSpriteRef.current.y -= 100 * dt;
-                if (displacementSpriteRef.current.y <= -512) displacementSpriteRef.current.y = 0;
-            }
-
-            if (weatherStatus === 'FOG' && fogSpriteRef.current) {
-                fogSpriteRef.current.tilePosition.x += 50 * dt;
-                fogSpriteRef.current.tilePosition.y += 20 * dt;
-            }
-
-            if (weatherStatus === 'MONSOON' && viewport?.filters) {
-                const hasRays = viewport.filters.some(f => f instanceof GodrayFilter);
-                if (hasRays) {
-                    const rays = viewport.filters.find(f => f instanceof GodrayFilter) as GodrayFilter;
-                    rays.time += dt;
-                }
-            }
+    // Attach to ticker
+    useEffect(() => {
+        if (!app || !engineRef.current) return;
+        
+        const engine = engineRef.current;
+        const update = (ticker: any) => {
+            engine.update(ticker.deltaTime);
         };
-
+        
         app.ticker.add(update);
+        
         return () => {
             app.ticker.remove(update);
         };
-    }, [app, weatherStatus, viewport]);
+    }, [app]);
 
     return (
-        <Container 
-            ref={containerRef} 
-            name="weather-root" 
-            zIndex={9999} 
-            sortableChildren={true}
-        >
-             {/* Fog Overlay */}
-            {weatherStatus === 'FOG' && (
-                 <TilingSprite 
-                    ref={fogSpriteRef} 
-                    texture={TextureManager.get('NOISE_MAP') || PIXI.Texture.WHITE} 
-                    width={width} 
-                    height={height}
-                    alpha={0.3}
-                    scale={{x: 4, y: 4}} 
-                    tint={0xAAFFAA}
-                    zIndex={100} 
-                 />
-            )}
-        </Container>
+        <Container ref={containerRef} name="weather-zones" zIndex={9999} />
     );
 };

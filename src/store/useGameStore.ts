@@ -478,7 +478,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   placementMode: null,
   
   weather: { playerZones: {}, turnsRemaining: 5 },
-  weatherStatus: 'MONSOON', // Force MONSOON for testing
+  weatherStatus: 'TAILWIND', // Force TAIlWIND for testing
   visibleTiles: new Set(),
 
   selectedUnitId: null,
