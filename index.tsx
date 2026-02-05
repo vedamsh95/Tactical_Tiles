@@ -6,6 +6,7 @@ import { LeftPanel, RightPanel, WinnerOverlay } from './src/components/ui/HUD';
 import { GameSetup } from './src/screens/GameSetup';
 import { MapEditor } from './src/screens/MapEditor';
 import { HowToPlay } from './src/screens/HowToPlay';
+import { ArcadeScreen } from './src/features/arcade/components/ArcadeScreen';
 import { useGameStore } from './src/store/useGameStore';
 import { ViewportProvider } from './src/context/ViewportContext';
 import { MapControls } from './src/components/game/ui/MapControls';
@@ -24,6 +25,10 @@ const App = () => {
 
   if (currentScreen === 'TUTORIAL') {
       return <HowToPlay />;
+  }
+
+  if (currentScreen === 'ARCADE') {
+      return <ArcadeScreen />;
   }
 
   // GAME SCREEN

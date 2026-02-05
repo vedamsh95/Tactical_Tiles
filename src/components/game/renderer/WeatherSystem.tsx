@@ -539,7 +539,9 @@ export const WeatherSystem: React.FC<WeatherSystemProps> = ({ width, height, vie
         app.ticker.add(update);
         
         return () => {
-            app.ticker.remove(update);
+            if (app && app.ticker) {
+                app.ticker.remove(update);
+            }
         };
     }, [app]);
 

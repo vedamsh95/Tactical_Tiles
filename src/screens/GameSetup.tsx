@@ -70,6 +70,7 @@ export const GameSetup = () => {
     const openEditor = useGameStore(state => state.openEditor);
     const loadMapIntoEditor = useGameStore(state => state.loadMapIntoEditor);
     const openTutorial = useGameStore(state => state.openTutorial);
+    const openArcade = useGameStore(state => state.openArcade);
     const setGameSettings = useGameStore(state => state.setGameSettings);
     
     // UI State
@@ -247,7 +248,19 @@ export const GameSetup = () => {
             }} />
             
             {/* HOW TO PLAY BUTTON (Top Right) */}
-            <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20 }}>
+            <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20, display: 'flex', gap: '10px' }}>
+                <button
+                    onClick={openArcade}
+                    style={{
+                        padding: '12px 24px', background: 'rgba(255,100,0,0.2)', border: '1px solid #FF5722',
+                        color: '#ffccbc', borderRadius: '30px', fontWeight: 'bold', cursor: 'pointer',
+                        backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', gap: '8px'
+                    }}
+                >
+                    <span style={{ fontSize: '16px' }}>🕹️</span>
+                    ARCADE
+                </button>
+                
                 <button
                     onClick={openTutorial}
                     style={{

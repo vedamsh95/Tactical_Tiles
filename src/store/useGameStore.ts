@@ -15,7 +15,7 @@ interface GameStore {
   graveyard: DeadUnit[];
   
   // Game State
-  currentScreen: 'SETUP' | 'GAME' | 'EDITOR' | 'TUTORIAL';
+  currentScreen: 'SETUP' | 'GAME' | 'EDITOR' | 'TUTORIAL' | 'ARCADE';
   settings: GameSettings;
   currentPlayer: number;
   totalTurns: number; // For Doomsday (Rounds)
@@ -78,6 +78,8 @@ interface GameStore {
   exitEditor: () => void;
   openTutorial: () => void;
   exitTutorial: () => void;
+  openArcade: () => void;
+  exitArcade: () => void;
   loadMapAndStart: (customMap: Tile[]) => void;
   loadMapIntoEditor: (map: SavedMap) => void;
 
@@ -87,10 +89,13 @@ interface GameStore {
   handleTileClick: (x: number, y: number) => void;
   setHoveredTile: (tileId: string | null) => void;
   handleGraveyardSelect: (deadUnitId: string) => void;
-  selectInventoryItem: (index: number | null) => void; // NEW
+  selectInventoryItem: (index: number | null) => void; 
   endTurn: () => void;
   resetGame: () => void;
   
+  // Destruction
+  destroyTile: (x: number, y: number) => void;
+
   secureBuilding: () => void;
   heistBank: () => void;
   siegeBase: () => void;
@@ -104,7 +109,6 @@ interface GameStore {
   runAiLoop: () => void;
   executeAiAction: (action: AIAction) => void;
 }
-
 const WEATHER_TYPES: WeatherType[] = ['CLEAR', 'SCORCHED', 'MONSOON', 'FOG', 'TAILWIND', 'SANDSTORM'];
 
 const rollWeather = (): WeatherType => {
@@ -516,6 +520,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   exitEditor: () => set({ currentScreen: 'SETUP' }),
   openTutorial: () => set({ currentScreen: 'TUTORIAL' }),
   exitTutorial: () => set({ currentScreen: 'SETUP' }),
+  openArcade: () => set({ currentScreen: 'ARCADE' }),
+  exitArcade: () => set({ currentScreen: 'SETUP' }),
   
   loadMapIntoEditor: (map: SavedMap) => set({ currentScreen: 'EDITOR', mapToEdit: map }),
 
@@ -1183,6 +1189,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
   endTurn: () => {
     get().executeAiAction({ type: 'END_TURN' });
   },
+
+  destroyTile: (x, y) => set(state => {
+      const index = y * state.gridSize + x;
+      if (index < 0 || index >= state.mapData.length) return {};
+      
+      const newMap = [...state.mapData];
+      const tile = { ...newMap[index] };
+      
+      // Mutate Type
+      if (tile.type === 'FOREST') tile.type = 'PLAINS';
+      else if (tile.type === 'BUILDING') tile.type = 'PLAINS'; 
+      else if (tile.type === 'BARRIER') tile.type = 'PLAINS';
+      
+      // Remove loot/props
+      tile.loot = null;
+      
+      newMap[index] = tile;
+      return { mapData: newMap };
+  }),
 
   // ... (AI Loop remains the same)
   runAiLoop: () => {
