@@ -12,6 +12,8 @@ export interface IsoAssetDef {
     color: number; // Fallback color
     height?: number; // Visual height for objects
     baseWidth?: number; // For scaling logic (normalization)
+    offset?: { x: number, y: number }; // Manual pixel shift
+    anchor?: { x: number, y: number }; // Manual anchor override
 }
 
 export const ISO_ASSETS: Record<string, IsoAssetDef> = {
