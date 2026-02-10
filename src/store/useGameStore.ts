@@ -15,7 +15,7 @@ interface GameStore {
   graveyard: DeadUnit[];
   
   // Game State
-  currentScreen: 'SETUP' | 'GAME' | 'EDITOR' | 'TUTORIAL' | 'ARCADE';
+  currentScreen: 'SETUP' | 'GAME' | 'EDITOR' | 'TUTORIAL' | 'ARCADE' | 'VISION3D';
   settings: GameSettings;
   currentPlayer: number;
   totalTurns: number; // For Doomsday (Rounds)
@@ -79,6 +79,7 @@ interface GameStore {
   openTutorial: () => void;
   exitTutorial: () => void;
   openArcade: () => void;
+  openVision3d: () => void;
   exitArcade: () => void;
   loadMapAndStart: (customMap: Tile[]) => void;
   loadMapIntoEditor: (map: SavedMap) => void;
@@ -521,6 +522,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   openTutorial: () => set({ currentScreen: 'TUTORIAL' }),
   exitTutorial: () => set({ currentScreen: 'SETUP' }),
   openArcade: () => set({ currentScreen: 'ARCADE' }),
+  openVision3d: () => set({ currentScreen: 'VISION3D' }),
   exitArcade: () => set({ currentScreen: 'SETUP' }),
   
   loadMapIntoEditor: (map: SavedMap) => set({ currentScreen: 'EDITOR', mapToEdit: map }),

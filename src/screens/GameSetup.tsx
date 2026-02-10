@@ -71,6 +71,7 @@ export const GameSetup = () => {
     const loadMapIntoEditor = useGameStore(state => state.loadMapIntoEditor);
     const openTutorial = useGameStore(state => state.openTutorial);
     const openArcade = useGameStore(state => state.openArcade);
+    const openVision3d = useGameStore(state => state.openVision3d);
     const setGameSettings = useGameStore(state => state.setGameSettings);
     
     // UI State
@@ -261,6 +262,18 @@ export const GameSetup = () => {
                     ARCADE
                 </button>
                 
+                <button
+                    onClick={openVision3d}
+                    style={{
+                        padding: '12px 24px', background: 'rgba(33, 150, 243, 0.2)', border: '1px solid #2196F3',
+                        color: '#BBDEFB', borderRadius: '30px', fontWeight: 'bold', cursor: 'pointer',
+                        backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', gap: '8px'
+                    }}
+                >
+                    <span style={{ fontSize: '16px' }}>👁️</span>
+                    VISION 3D
+                </button>
+
                 <button
                     onClick={openTutorial}
                     style={{
