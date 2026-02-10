@@ -8,6 +8,9 @@ import { MapEditor } from './src/screens/MapEditor';
 import { HowToPlay } from './src/screens/HowToPlay';
 import { ArcadeScreen } from './src/features/arcade/components/ArcadeScreen';
 import { VisionScreen } from './src/features/vision3d/components/VisionScreen';
+import { Iso2DScreen } from './src/features/iso-2d/Iso2DScreen';
+import { Test2DScreen } from './src/features/test-2d/Test2DScreen';
+import { IsoEditor } from './src/features/iso_editor/IsoEditor';
 import { useGameStore } from './src/store/useGameStore';
 import { ViewportProvider } from './src/context/ViewportContext';
 import { MapControls } from './src/components/game/ui/MapControls';
@@ -34,6 +37,18 @@ const App = () => {
 
   if (currentScreen === 'VISION3D') {
       return <VisionScreen />;
+  }
+
+  if (currentScreen === 'ISO2D') {
+      return <Iso2DScreen />;
+  }
+
+  if (currentScreen === 'TEST2D') {
+      return <Test2DScreen />;
+  }
+
+  if (currentScreen === 'ISO_EDITOR') {
+      return <IsoEditor />;
   }
 
   // GAME SCREEN

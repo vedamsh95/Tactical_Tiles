@@ -72,6 +72,9 @@ export const GameSetup = () => {
     const openTutorial = useGameStore(state => state.openTutorial);
     const openArcade = useGameStore(state => state.openArcade);
     const openVision3d = useGameStore(state => state.openVision3d);
+    const openIso2d = useGameStore(state => state.openIso2d);
+    const openTest2d = useGameStore(state => state.openTest2d);
+    const openIsoEditor = useGameStore(state => state.openIsoEditor);
     const setGameSettings = useGameStore(state => state.setGameSettings);
     
     // UI State
@@ -251,6 +254,18 @@ export const GameSetup = () => {
             {/* HOW TO PLAY BUTTON (Top Right) */}
             <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20, display: 'flex', gap: '10px' }}>
                 <button
+                    onClick={openTest2d}
+                    style={{
+                        padding: '12px 24px', background: 'rgba(50, 205, 50, 0.2)', border: '1px solid #32CD32',
+                        color: '#90EE90', borderRadius: '30px', fontWeight: 'bold', cursor: 'pointer',
+                        backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', gap: '8px'
+                    }}
+                >
+                    <span style={{ fontSize: '16px' }}>🧪</span>
+                    TEST-2D
+                </button>
+
+                <button
                     onClick={openArcade}
                     style={{
                         padding: '12px 24px', background: 'rgba(255,100,0,0.2)', border: '1px solid #FF5722',
@@ -272,6 +287,30 @@ export const GameSetup = () => {
                 >
                     <span style={{ fontSize: '16px' }}>👁️</span>
                     VISION 3D
+                </button>
+
+                <button
+                    onClick={openIso2d}
+                    style={{
+                        padding: '12px 24px', background: 'rgba(76, 175, 80, 0.2)', border: '1px solid #4CAF50',
+                        color: '#C8E6C9', borderRadius: '30px', fontWeight: 'bold', cursor: 'pointer',
+                        backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', gap: '8px'
+                    }}
+                >
+                    <span style={{ fontSize: '16px' }}>📐</span>
+                    ISO 2D
+                </button>
+
+                <button
+                    onClick={openIsoEditor}
+                    style={{
+                        padding: '12px 24px', background: 'rgba(233, 30, 99, 0.2)', border: '1px solid #E91E63',
+                        color: '#F8BBD0', borderRadius: '30px', fontWeight: 'bold', cursor: 'pointer',
+                        backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', gap: '8px'
+                    }}
+                >
+                    <span style={{ fontSize: '16px' }}>🏗️</span>
+                    ISO EDITOR
                 </button>
 
                 <button

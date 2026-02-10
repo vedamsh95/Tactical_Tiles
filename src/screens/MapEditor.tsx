@@ -1,11 +1,11 @@
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Stage, Container, Sprite, Graphics, Text } from '@pixi/react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Stage, Container, Graphics, Text } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { SafeSprite } from '../components/game/SafeSprite';
 import { useGameStore } from '../store/useGameStore';
 import { Tile, TerrainType, BuildingSubType } from '../core/types';
-import { TILE_SIZE, HEIGHT_COLORS, TERRAIN_COLORS, PLAYER_COLORS, TERRAIN_DEFENSE, TERRAIN_COSTS, BUILDING_STATS, BASE_STATS, BANK_STATS } from '../core/constants/Config';
+import { TILE_SIZE, PLAYER_COLORS, TERRAIN_DEFENSE, TERRAIN_COSTS, BUILDING_STATS, BASE_STATS, BANK_STATS } from '../core/constants/Config';
 import { preloadTextures, getTexture } from '../core/graphics/TextureManager';
 import { MapStorage } from '../core/storage/MapStorageManager';
 
@@ -283,7 +283,7 @@ export const MapEditor = () => {
         });
     }, []);
 
-    // Layout Calculation
+    // Layout Calculation (Simple Fit)
     useEffect(() => {
         if (!containerRef.current) return;
         const resize = () => {
@@ -292,15 +292,12 @@ export const MapEditor = () => {
             const worldSize = mapSize * TILE_SIZE;
             
             // Calculate scale to fit
-            const scale = Math.min(clientWidth / worldSize, clientHeight / worldSize);
-            // Limit max scale to 1.5 to avoid pixelation, but allow it to shrink as much as needed
-            const safeScale = Math.min(scale, 1.5);
-
-            const offsetX = (clientWidth - worldSize * safeScale) / 2;
-            const offsetY = (clientHeight - worldSize * safeScale) / 2;
+            const scale = Math.min(clientWidth / worldSize, clientHeight / worldSize) * 0.95; 
+            // Center it
+            const offsetX = (clientWidth - worldSize * scale) / 2;
+            const offsetY = (clientHeight - worldSize * scale) / 2;
             
-            console.log(`[MapEditor] Resize: W${clientWidth} H${clientHeight} World${worldSize} Scale${scale} Safe${safeScale} Off${offsetX},${offsetY}`);
-            setLayout({ width: clientWidth, height: clientHeight, scale: safeScale, offsetX, offsetY });
+            setLayout({ width: clientWidth, height: clientHeight, scale, offsetX, offsetY });
         };
         const obs = new ResizeObserver(resize);
         obs.observe(containerRef.current);
